@@ -95,6 +95,15 @@ def encrypt_one(skill, password):
         os.makedirs(scripts_dir)
         print(f'  已创建 scripts/ 目录')
 
+    # 部署验证脚本和公钥（与 encrypt_skill.py 保持一致）
+    src_scripts = os.path.dirname(os.path.abspath(__file__))
+    for fname in ['verify.py', 'decrypt_body.py', 'public_key.pem']:
+        src = os.path.join(src_scripts, fname)
+        dst = os.path.join(scripts_dir, fname)
+        if os.path.exists(src) and not os.path.exists(dst):
+            shutil.copy2(src, dst)
+            print(f'  已部署 {fname} 到 {scripts_dir}/')
+
     print(f'  完成：{name}')
     return True
 

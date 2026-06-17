@@ -2,6 +2,7 @@
 """用法: python scripts/sign_multi.py
 运行前修改下方的 DONGLES 列表，填入每个U盘的盘符和清洗后序列号"""
 import os
+import sys
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 

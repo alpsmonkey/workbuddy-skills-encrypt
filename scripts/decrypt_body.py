@@ -2,6 +2,7 @@
 """用法: python scripts/decrypt_body.py "<密码>"
 密码可通过命令行传入（推荐），也可交互式输入"""
 import pyAesCrypt, os, sys, subprocess
+from io import BytesIO
 
 BUFFER = 64 * 1024
 
@@ -33,16 +34,13 @@ if __name__ == '__main__':
         print(f'加密文件不存在：{enc_path}')
         sys.exit(1)
 
-    # 第三步：解密到临时文件，读取后删除
+    # 第三步：解密到内存流，不留临时文件
     enc_size = os.path.getsize(enc_path)
-    tmp_path = enc_path + '.tmp'
+    buf = BytesIO()
 
-    try:
-        with open(enc_path, 'rb') as fIn, \
-             open(tmp_path, 'wb') as fOut:
-            pyAesCrypt.decryptStream(fIn, fOut, password, BUFFER, enc_size)
-        content = open(tmp_path, 'r', encoding='utf-8').read()
-        print(content)
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    with open(enc_path, 'rb') as fIn:
+        pyAesCrypt.decryptStream(fIn, buf, password, BUFFER, enc_size)
+
+    buf.seek(0)
+    content = buf.read().decode('utf-8')
+    print(content)
