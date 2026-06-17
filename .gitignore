@@ -1,0 +1,28 @@
+# Private key — NEVER commit
+private_key.pem
+*.pem.bak
+
+# Encrypted skill body files (generated, not source)
+SKILL.body.enc
+SKILL.md.enc
+
+# Backups
+*.bak
+*.bak2
+*.locked
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup directory
+skill-backup/
