@@ -1,6 +1,6 @@
 ---
-name: usb-dongle-encrypt
-description: USB加密狗互通式加密系统——保护WorkBuddy技能不被未授权复制。支持单技能/批量加密、RSA-2048签名验证、AES-256加密正文、外壳+正文分层架构。初始化→生成密钥→签名U盘→加密技能，四步锁死。
+name: workbuddy-skills-encrypt
+description: USB加密狗互通式加密系统——保护WorkBuddy技能不被未授权复制。支持单技能/批量加密、RSA-2048签名验证、AES-256加密正文、外壳+正文分层架构。初始化→生成密钥→签名U盘→加密技能，四步锁死。可通过 git clone 直接安装到 WorkBuddy。
 ---
 
 # USB 加密狗互通式加密系统
@@ -85,7 +85,7 @@ python scripts/decrypt_body.py "密码" > temp.md
 ## 文件结构
 
 ```
-usb-dongle-encrypt/                    # 本技能（本地 skill 目录）
+workbuddy-skills-encrypt/              # 本技能（本地 skill 目录）
 ├── SKILL.md                           # 本文件
 └── scripts/
     ├── read_serial.py                 # 读取U盘序列号（含异常字符清洗）

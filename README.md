@@ -186,8 +186,8 @@ python scripts/sign_multi.py
 ## 安装为本机 WorkBuddy 技能
 
 ```bash
-# 将本仓库安装为 WorkBuddy 技能
-cp -r workbuddy-skills-encrypt ~/.workbuddy/skills/usb-dongle-encrypt/
+# 从 GitHub 直接安装到 WorkBuddy
+git clone https://github.com/alpsmonkey/workbuddy-skills-encrypt.git ~/.workbuddy/skills/workbuddy-skills-encrypt
 
 # 之后在 WorkBuddy 中直接对话触发：
 # "帮我初始化U盘加密狗"

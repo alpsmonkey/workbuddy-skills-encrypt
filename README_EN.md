@@ -109,7 +109,7 @@ Just use WorkBuddy normally. When AI loads an encrypted skill, it will:
 ## File Structure
 
 ```
-usb-dongle-encrypt/
+workbuddy-skills-encrypt/
 ├── SKILL.md              # WorkBuddy skill definition (can encrypt itself)
 └── scripts/
     ├── read_serial.py    # Read USB serial (with abnormal char cleaning)
