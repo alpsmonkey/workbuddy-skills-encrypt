@@ -41,15 +41,20 @@ if __name__ == '__main__':
             shutil.copy2(src_script, os.path.join(target_scripts, script_name))
             print(f'已部署 {script_name} 到 {target_scripts}/')
 
-    # 0.5. 加密前先做异地备份（保险措施）
-    backup_dir = os.path.join(BACKUP_DIR, date_str)
+    # 0.5. 加密前先做异地备份（保险措施，按技能名分目录避免同天覆盖）
+    skill_name = os.path.basename(skill_dir)
+    backup_dir = os.path.join(BACKUP_DIR, date_str, skill_name)
     os.makedirs(backup_dir, exist_ok=True)
     shutil.copy2(skill_path, os.path.join(backup_dir, 'SKILL.md'))
     print(f'异地备份已保存: {backup_dir}/SKILL.md')
 
-    # 1. 备份原始 SKILL.md → SKILL.md.bak
-    shutil.copy2(skill_path, skill_path + '.bak')
-    print(f'已备份原文件为 {skill_path}.bak')
+    # 1. 备份原始 SKILL.md → SKILL.md.bak（若已存在则拒绝，防止覆盖）
+    bak_path = skill_path + '.bak'
+    if os.path.exists(bak_path):
+        print(f'错误：已存在备份文件 {bak_path}，请先手动处理后再加密')
+        exit(1)
+    shutil.copy2(skill_path, bak_path)
+    print(f'已备份原文件为 {bak_path}')
 
     # 2. 加密原始内容 → SKILL.body.enc
     body_enc = os.path.join(skill_dir, 'SKILL.body.enc')

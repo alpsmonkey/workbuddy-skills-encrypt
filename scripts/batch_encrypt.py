@@ -109,6 +109,7 @@ def encrypt_one(skill, password):
 
 
 def main():
+    date_str = datetime.now().strftime('%Y-%m-%d')
     print('WorkBuddy 技能批量加密工具')
     print(f'技能目录：{SKILLS_DIR}\n')
 
