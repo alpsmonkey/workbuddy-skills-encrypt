@@ -75,10 +75,10 @@ if __name__ == '__main__':
         elif line.startswith('description:'):
             desc = line.split(':', 1)[1].strip()
 
-    # 4. 写入外壳 SKILL.md（明文，永不加密）
+    # 4. 写入外壳 SKILL.md（明文，永不加密；description 脱敏，不暴露技能内容）
     shell = f"""---
 name: {name}
-description: {desc}
+description: category: utility
 ---
 
 ⚠️ 本技能已加密，需要先解密才能使用。

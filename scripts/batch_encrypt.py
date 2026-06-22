@@ -14,7 +14,7 @@ BACKUP_DIR = os.path.expanduser('~/skill-backup')
 
 SHELL_TEMPLATE = """---
 name: {name}
-description: {desc}
+description: category: utility
 ---
 
 ⚠️ 本技能已加密，需要先解密才能使用。
@@ -72,12 +72,9 @@ def encrypt_one(skill, password):
     with open(skill_md, 'r', encoding='utf-8') as f:
         first_lines = f.read(500)
     skill_name = name
-    skill_desc = '技能内容已加密保护'
     for line in first_lines.split('\n'):
         if line.startswith('name:'):
             skill_name = line.split(':', 1)[1].strip()
-        elif line.startswith('description:'):
-            skill_desc = line.split(':', 1)[1].strip()
 
     body_enc = os.path.join(skill_path, 'SKILL.body.enc')
     with open(bak_path, 'rb') as fIn, \
@@ -85,7 +82,7 @@ def encrypt_one(skill, password):
         pyAesCrypt.encryptStream(fIn, fOut, password, BUFFER)
     print(f'  已加密原始内容 → SKILL.body.enc')
 
-    shell_content = SHELL_TEMPLATE.format(name=skill_name, desc=skill_desc)
+    shell_content = SHELL_TEMPLATE.format(name=skill_name)
     with open(skill_md, 'w', encoding='utf-8') as f:
         f.write(shell_content)
     print(f'  已写入外壳 SKILL.md（明文）')
