@@ -123,6 +123,10 @@ workbuddy-skills-encrypt/
     └── public_key.pem    # Public key for verification
 ```
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=alpsmonkey/workbuddy-skills-encrypt&type=Date)](https://star-history.com/#alpsmonkey/workbuddy-skills-encrypt&Date)
+
 ## License
 
 This project is provided for educational and personal use. Use at your own risk. The private key is your responsibility — if you lose both the USB dongle and all backups, encrypted skills cannot be recovered.

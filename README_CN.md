@@ -215,6 +215,10 @@ git clone https://github.com/alpsmonkey/workbuddy-skills-encrypt.git ~/.workbudd
 
 完全不需要。密钥生成、签名、加密全部纯本地运行，离线完成。
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=alpsmonkey/workbuddy-skills-encrypt&type=Date)](https://star-history.com/#alpsmonkey/workbuddy-skills-encrypt&Date)
+
 ## 开源许可
 
 [MIT](LICENSE) — 自由使用、修改、分发。
