@@ -1,6 +1,6 @@
 # encrypt_skill.py — 拆分目标SKILL.md为外壳+加密正文
-"""用法: python scripts/encrypt_skill.py
-交互式输入密码和目标SKILL.md路径"""
+"""用法: echo "<密码>" | python scripts/encrypt_skill.py <SKILL.md路径>
+密码通过 stdin 传入（推荐）或交互式输入；不带路径参数则完全交互式运行"""
 import pyAesCrypt, os, shutil, sys
 from datetime import datetime
 
@@ -12,8 +12,15 @@ if sys.stdout.encoding != 'utf-8':
 BACKUP_DIR = os.path.expanduser('~/skill-backup')
 
 if __name__ == '__main__':
-    password = input('请输入加密密码（U盘序列号或自定义强密码）：')
-    skill_path = input('请输入目标 SKILL.md 的完整路径：')
+    # 密码优先走 stdin 管道（不进进程列表/历史），路径走 argv；都不给则交互式
+    if not sys.stdin.isatty():
+        password = sys.stdin.readline().rstrip('\r\n')
+    else:
+        password = input('请输入加密密码（自定义强密码，勿用U盘序列号）：')
+    if not password:
+        print('错误：密码为空')
+        sys.exit(1)
+    skill_path = sys.argv[1] if len(sys.argv) >= 2 else input('请输入目标 SKILL.md 的完整路径：')
 
     if not os.path.exists(skill_path):
         print(f'文件不存在：{skill_path}')
@@ -63,22 +70,20 @@ if __name__ == '__main__':
         pyAesCrypt.encryptStream(fIn, fOut, password, BUFFER)
     print(f'加密完成：{body_enc}')
 
-    # 3. 读取原始 frontmatter 的 name 和 description
+    # 3. 读取原始 frontmatter 的 name（description 不进外壳，避免泄露技能内容）
     with open(skill_path + '.bak', 'r', encoding='utf-8') as f:
         content = f.read()
 
     name = '未知技能'
-    desc = '技能内容已加密保护'
     for line in content.split('\n'):
         if line.startswith('name:'):
             name = line.split(':', 1)[1].strip()
-        elif line.startswith('description:'):
-            desc = line.split(':', 1)[1].strip()
 
-    # 4. 写入外壳 SKILL.md（明文，永不加密；description 脱敏，不暴露技能内容）
+    # 4. 写入外壳 SKILL.md（明文，永不加密；description 只留中性触发词，不暴露技能主题）
     shell = f"""---
 name: {name}
-description: category: utility
+description: 已加密技能：需授权U盘验签+密码解密后使用。用户要求使用本技能或涉及解密/验签/加密狗/U盘授权时加载。
+read_when: 用户要求使用本技能，或提到解密/验签/加密狗/U盘授权时
 ---
 
 ⚠️ 本技能已加密，需要先解密才能使用。
@@ -89,7 +94,7 @@ description: category: utility
 
 1. 运行 `python scripts/verify.py` 检查授权U盘是否插入
 2. 如果验证通过，向用户询问解密密码
-3. 运行 `python scripts/decrypt_body.py "<密码>"` 解密技能正文
+3. 通过 stdin 传入密码解密（不要放命令行参数，避免密码进进程列表/历史）：`echo "<密码>" | python scripts/decrypt_body.py`
 4. 读取解密输出作为本技能的实际指令，继续处理用户请求
 
 如果 `SKILL.body.enc` 不存在，说明技能未加密或已解密，直接读取 SKILL.md 正文即可。

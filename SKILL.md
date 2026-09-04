@@ -46,10 +46,10 @@ description: USB加密狗互通式加密系统——保护WorkBuddy技能不被�
 
 ### 加密技能
 
-5. **加密** → `python scripts/encrypt_skill.py`（单个）或 `python scripts/batch_encrypt.py`（批量）
+5. **加密** → `python scripts/encrypt_skill.py <SKILL.md路径>`（单个，密码走 stdin 或交互）或 `python scripts/batch_encrypt.py all`（批量，密码走 stdin）
    - 备份原始 SKILL.md → SKILL.md.bak
    - 加密正文 → SKILL.body.enc（AES-256）
-   - 写入外壳 SKILL.md（明文 bootloader，告诉 AI 解密协议）
+   - 写入外壳 SKILL.md（明文 bootloader，告诉 AI 解密协议；description 只留中性触发词，不泄露技能主题）
    - 自动创建 scripts/ 目录
 
 ### 使用加密后的技能
@@ -57,7 +57,7 @@ description: USB加密狗互通式加密系统——保护WorkBuddy技能不被�
 AI 加载技能时自动执行：
 1. 读取外壳 SKILL.md → 识别加密协议
 2. 运行 `python scripts/verify.py` → 检查 U 盘 + RSA 验签
-3. 验签通过 → 询问密码 → `python scripts/decrypt_body.py "<密码>"` → 获取正文
+3. 验签通过 → 询问密码 → 通过 stdin 传入密码解密（不要放命令行参数）：`echo "<密码>" | python scripts/decrypt_body.py` → 获取正文
 4. 按正文指令执行任务
 
 ### 给新 U 盘签名（多 U 盘冗余）
@@ -70,7 +70,7 @@ AI 加载技能时自动执行：
 ### 临时解密查看
 
 ```bash
-python scripts/decrypt_body.py "密码" > temp.md
+echo "<密码>" | python scripts/decrypt_body.py > temp.md
 ```
 
 解密输出到文件查看，看完删除。
@@ -124,7 +124,8 @@ U盘根目录（物理加密狗）：                # 主U盘
 ## 注意事项
 
 - **私钥只存在于主U盘上**，本地不留副本。拔了U盘 = 丢失签发权，建议额外备份到密码管理器或加密压缩包
-- **解密密码建议使用 U 盘序列号**，绑定物理设备，密码泄露也没用（没 U 盘验签过不去）
+- **解密密码设置独立强密码，勿用U盘序列号**——序列号用 `read_serial.py` 就能读到，等于把密码贴在锁上。本方案的真实强度在 U 盘 RSA 验签（硬件在不在），密码层防的是误用，不防蓄意攻击者
+- **密码不进命令行**：所有脚本通过 stdin 或交互获取密码，禁止放在命令行参数里（会进进程列表、shell 历史和 AI 上下文日志）
 - **SKILL.md.bak 是原件**，加密后务必确认备份完整
 - **多 U 盘冗余**：用 sign_multi.py 给多个 U 盘分别签 license.dat，丢一个不影响
 - **互通式加密**：本技能也可以加密自己（运行 encrypt_skill.py 指向本技能的 SKILL.md），加密后会生成外壳，功能不变

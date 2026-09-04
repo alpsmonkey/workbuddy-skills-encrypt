@@ -1,7 +1,9 @@
 # batch_encrypt.py — 批量加密WorkBuddy技能
-"""用法: python scripts/batch_encrypt.py
-扫描 ~/.workbuddy/skills/ 下所有技能，选择加密目标"""
-import os, shutil, pyAesCrypt
+"""用法: echo "<密码>" | python scripts/batch_encrypt.py all
+       echo "<密码>" | python scripts/batch_encrypt.py 1,3,5
+非交互模式：参数为 all 或逗号分隔的技能编号，密码走 stdin。
+不带参数则进入原来的交互式菜单。"""
+import os, shutil, sys, pyAesCrypt
 from datetime import datetime
 
 SKILLS_DIR = os.path.expanduser('~/.workbuddy/skills')
@@ -14,7 +16,8 @@ BACKUP_DIR = os.path.expanduser('~/skill-backup')
 
 SHELL_TEMPLATE = """---
 name: {name}
-description: category: utility
+description: 已加密技能：需授权U盘验签+密码解密后使用。用户要求使用本技能或涉及解密/验签/加密狗/U盘授权时加载。
+read_when: 用户要求使用本技能，或提到解密/验签/加密狗/U盘授权时
 ---
 
 ⚠️ 本技能已加密，需要先解密才能使用。
@@ -25,7 +28,7 @@ description: category: utility
 
 1. 运行 `python scripts/verify.py` 检查授权U盘是否插入
 2. 如果验证通过，向用户询问解密密码
-3. 运行 `python scripts/decrypt_body.py "<密码>"` 解密技能正文
+3. 通过 stdin 传入密码解密（不要放命令行参数，避免密码进进程列表/历史）：`echo "<密码>" | python scripts/decrypt_body.py`
 4. 读取解密输出作为本技能的实际指令，继续处理用户请求
 
 如果 `SKILL.body.enc` 不存在，说明技能未加密或已解密，直接读取 SKILL.md 正文即可。
@@ -105,6 +108,18 @@ def encrypt_one(skill, password):
     return True
 
 
+def read_password(prompt='请输入加密密码：'):
+    """密码优先走 stdin 管道（不进进程列表/历史），否则交互输入"""
+    if not sys.stdin.isatty():
+        pwd = sys.stdin.readline().rstrip('\r\n')
+    else:
+        pwd = input(prompt)
+    if not pwd:
+        print('错误：密码为空')
+        sys.exit(1)
+    return pwd
+
+
 def main():
     date_str = datetime.now().strftime('%Y-%m-%d')
     print('WorkBuddy 技能批量加密工具')
@@ -115,42 +130,56 @@ def main():
         print('未找到任何技能')
         return
 
-    print(f'找到 {len(skills)} 个技能：\n')
-    for i, s in enumerate(skills):
-        print(f'  [{i + 1}] {s["name"]}  ({s["status"]})')
-    print()
+    args = sys.argv[1:]
+    if args:
+        # 非交互模式：显式命令即确认，不再二次询问
+        choice = args[0]
+        password = read_password()
+        if choice.lower() == 'all':
+            to_encrypt = [s for s in skills if s['status'] == '未加密']
+        else:
+            indices = [int(x.strip()) - 1 for x in choice.split(',') if x.strip().isdigit()]
+            to_encrypt = [skills[i] for i in indices if 0 <= i < len(skills)]
+    else:
+        print(f'找到 {len(skills)} 个技能：\n')
+        for i, s in enumerate(skills):
+            print(f'  [{i + 1}] {s["name"]}  ({s["status"]})')
+        print()
 
-    print('请输入要加密的技能编号（多个用逗号分隔，输入 all 加密全部未加密的，输入 q 退出）')
-    choice = input('选择：').strip()
+        print('请输入要加密的技能编号（多个用逗号分隔，输入 all 加密全部未加密的，输入 q 退出）')
+        choice = input('选择：').strip()
 
-    if choice.lower() == 'q':
-        print('已退出')
-        return
-
-    password = PASSWORD
-    if not password:
-        password = input('请输入加密密码：').strip()
-        confirm = input('再输一遍确认：').strip()
-        if password != confirm:
-            print('两次密码不一致，退出')
+        if choice.lower() == 'q':
+            print('已退出')
             return
 
-    to_encrypt = []
-    if choice.lower() == 'all':
-        to_encrypt = [s for s in skills if s['status'] == '未加密']
-    else:
-        indices = [int(x.strip()) - 1 for x in choice.split(',') if x.strip().isdigit()]
-        to_encrypt = [skills[i] for i in indices if 0 <= i < len(skills)]
+        password = PASSWORD
+        if not password:
+            password = read_password()
+            confirm = input('再输一遍确认：').strip()
+            if password != confirm:
+                print('两次密码不一致，退出')
+                return
+
+        to_encrypt = []
+        if choice.lower() == 'all':
+            to_encrypt = [s for s in skills if s['status'] == '未加密']
+        else:
+            indices = [int(x.strip()) - 1 for x in choice.split(',') if x.strip().isdigit()]
+            to_encrypt = [skills[i] for i in indices if 0 <= i < len(skills)]
 
     if not to_encrypt:
         print('没有选中任何技能')
         return
 
-    print(f'\n即将加密 {len(to_encrypt)} 个技能')
-    confirm = input('确认？(y/n)：').strip().lower()
-    if confirm != 'y':
-        print('已退出')
-        return
+    if args:
+        print(f'非交互模式：即将加密 {len(to_encrypt)} 个技能')
+    else:
+        print(f'\n即将加密 {len(to_encrypt)} 个技能')
+        confirm = input('确认？(y/n)：').strip().lower()
+        if confirm != 'y':
+            print('已退出')
+            return
 
     success = 0
     for skill in to_encrypt:

@@ -1,6 +1,6 @@
 # decrypt_body.py — 先验签U盘，通过后解密SKILL.body.enc并输出正文
-"""用法: python scripts/decrypt_body.py "<密码>"
-密码可通过命令行传入（推荐），也可交互式输入"""
+"""用法: echo "<密码>" | python scripts/decrypt_body.py
+密码通过 stdin 传入（推荐，避免进进程列表/历史），直接运行则交互式输入"""
 import pyAesCrypt, os, sys, subprocess
 from io import BytesIO
 
@@ -24,11 +24,14 @@ if __name__ == '__main__':
             sys.exit(1)
         print('U盘验证通过')
 
-    # 第二步：获取密码
-    if len(sys.argv) > 1:
-        password = sys.argv[1]
+    # 第二步：获取密码（stdin 管道优先；不接受命令行参数，避免密码进进程列表/历史）
+    if not sys.stdin.isatty():
+        password = sys.stdin.readline().rstrip('\r\n')
     else:
         password = input('请输入解密密码：')
+    if not password:
+        print('错误：密码为空')
+        sys.exit(1)
 
     if not os.path.exists(enc_path):
         print(f'加密文件不存在：{enc_path}')
@@ -38,9 +41,14 @@ if __name__ == '__main__':
     enc_size = os.path.getsize(enc_path)
     buf = BytesIO()
 
-    with open(enc_path, 'rb') as fIn:
-        pyAesCrypt.decryptStream(fIn, buf, password, BUFFER, enc_size)
+    try:
+        with open(enc_path, 'rb') as fIn:
+            pyAesCrypt.decryptStream(fIn, buf, password, BUFFER, enc_size)
+    except ValueError:
+        print('错误：解密失败（密码错误或文件损坏）')
+        sys.exit(1)
 
     buf.seek(0)
-    content = buf.read().decode('utf-8')
-    print(content)
+    # 直接输出原始字节：不经文本层换行转换，保证与加密前逐字节一致
+    sys.stdout.buffer.write(buf.read())
+    sys.stdout.buffer.flush()
