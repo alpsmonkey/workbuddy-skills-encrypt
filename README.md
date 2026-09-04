@@ -65,8 +65,9 @@ WorkBuddy 的技能加载机制很简单——直接读 SKILL.md 的内容给 AI
 | 层次 | 机制 | 被攻破需要什么 |
 |------|------|--------------|
 | 硬件绑定 | U 盘序列号 + RSA-2048 签名 | 物理 U 盘 |
-| 内容加密 | AES-256（pyAesCrypt） | 解密密码 |
+| 内容加密 | AES-256（pyAesCrypt） | 独立强密码（与序列号无关，勿复用序列号） |
 | 验签前置 | 解密前必须先过 RSA 验签 | 硬件 + 密码缺一不可 |
+| 密码传输 | 全部脚本走 stdin / 交互，禁止命令行参数 | 密码不进进程列表与 shell 历史 |
 | 私钥管控 | 私钥只存主 U 盘，本地无副本 | U 盘被物理偷走 |
 | 异地备份 | 加密前自动拷贝到 `~/skill-backup/` | 跟 skill 目录物理隔离 |
 | 多 U 盘冗余 | `sign_multi.py` 给多个 U 盘签名 | 丢一个不影响 |
@@ -99,16 +100,15 @@ python scripts/sign_license.py E AA0B1C2D3E4F
 ### 加密技能
 
 ```bash
-# 单个技能加密（交互式）
-python scripts/encrypt_skill.py
-# 输入密码（建议用 U 盘序列号）
-# 输入技能路径（如 C:/Users/.../SKILL.md）
-# 自动完成：异地基装备份 → 本地备份 → AES 加密 → 写入外壳
+# 单个技能加密（密码走 stdin，路径走参数）
+echo "你的强密码" | python scripts/encrypt_skill.py C:/Users/.../SKILL.md
+# 自动完成：异地备份 → 本地备份 → AES 加密 → 写入外壳
+# ⚠️ 密码请设置独立强密码，勿用 U 盘序列号——序列号用 read_serial.py 就能读到
 
-# 批量加密所有技能
-python scripts/batch_encrypt.py
-# 扫描 ~/.workbuddy/skills/ 下所有技能
-# 列出加密状态，选择目标，一键加密
+# 批量加密所有未加密技能（非交互）
+echo "你的强密码" | python scripts/batch_encrypt.py all
+# 或指定编号（先不带参数运行可看交互菜单）
+# 扫描 ~/.workbuddy/skills/ 下所有技能，自动备份 + 加密
 ```
 
 ### 使用加密后的技能
@@ -119,7 +119,7 @@ python scripts/batch_encrypt.py
 你正常使用 WorkBuddy → AI 加载技能 → 读外壳 → 验签 → 输入密码 → 解密 → 执行
 ```
 
-唯一需要你做的：在 AI 询问时输入解密密码。
+唯一需要你做的：在 AI 询问时输入解密密码（AI 会通过 stdin 传给脚本，不会出现在命令行参数里）。
 
 ## 文件结构
 
@@ -134,9 +134,9 @@ workbuddy-skills-encrypt/                # 本仓库
     ├── sign_license.py                  # 签名 license.dat（从 U 盘读取私钥）
     ├── sign_multi.py                    # 多 U 盘冗余签名（从主 U 盘读私钥）
     ├── verify.py                        # U 盘 RSA 验签（WMI 关联查询 + 公钥验证）
-    ├── encrypt_skill.py                 # 加密单个技能（外壳 + 正文 + 异地备份）
-    ├── decrypt_body.py                  # 验签 + 解密正文 → stdout（命令行传参）
-    ├── batch_encrypt.py                 # 批量加密（含异地备份、交互选择）
+    ├── encrypt_skill.py                 # 加密单个技能（外壳 + 正文 + 异地备份；支持非交互）
+    ├── decrypt_body.py                  # 验签 + 解密正文 → stdout（密码走 stdin，不进进程列表）
+    ├── batch_encrypt.py                 # 批量加密（非交互 all/编号 + 交互菜单双模式）
     └── public_key.pem                   # 公钥（仅验签用，公开无所谓）
 ```
 

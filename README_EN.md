@@ -80,11 +80,13 @@ python scripts/sign_license.py E AA0B1C2D3E4F
 ### Encrypt a Skill
 
 ```bash
-# Single skill
-python scripts/encrypt_skill.py
+# Single skill (password via stdin, path via argument)
+echo "your-strong-password" | python scripts/encrypt_skill.py C:/Users/.../SKILL.md
+# ⚠️ Use an independent strong password — never the USB serial number (readable via read_serial.py)
 
-# Batch encrypt all skills
-python scripts/batch_encrypt.py
+# Batch encrypt all unencrypted skills (non-interactive)
+echo "your-strong-password" | python scripts/batch_encrypt.py all
+# Or run without arguments for the interactive menu
 ```
 
 ### Use Encrypted Skills
@@ -92,7 +94,7 @@ python scripts/batch_encrypt.py
 Just use WorkBuddy normally. When AI loads an encrypted skill, it will:
 1. Read the bootloader shell
 2. Auto-run `verify.py` to check USB
-3. Ask for password if authorized
+3. Ask for password if authorized (passed to scripts via stdin — never command-line arguments, so it stays out of process lists and shell history)
 4. Decrypt body and execute
 
 ## Security
@@ -100,7 +102,8 @@ Just use WorkBuddy normally. When AI loads an encrypted skill, it will:
 | Layer | Mechanism | Purpose |
 |---|---|---|
 | Hardware binding | USB serial + RSA-2048 signature | Only authorized USB drives pass verification |
-| Content encryption | AES-256 (pyAesCrypt) | Skill body is ciphertext without password |
+| Content encryption | AES-256 (pyAesCrypt) | Skill body is ciphertext without an independent strong password (do NOT reuse the USB serial number — it is readable via read_serial.py) |
+| Password handling | stdin / interactive input only, never argv | Password stays out of process lists and shell history |
 | Bootloader isolation | Shell (plaintext) / Body (encrypted) | AI can always read the protocol, never the content |
 | Private key custody | USB-only storage | Signing authority lives on physical dongle |
 | Off-site backup | Auto-copy before encryption | Disaster recovery independent of skill directory |
@@ -117,9 +120,9 @@ workbuddy-skills-encrypt/
     ├── sign_license.py   # Sign license.dat to USB (reads private key from USB)
     ├── sign_multi.py     # Multi-USB redundancy signing
     ├── verify.py         # USB RSA verification (WMI association query)
-    ├── encrypt_skill.py  # Encrypt single skill (shell + body separation + off-site backup)
-    ├── decrypt_body.py   # Verify + decrypt → stdout
-    ├── batch_encrypt.py  # Batch encrypt all skills (with off-site backup)
+    ├── encrypt_skill.py  # Encrypt single skill (shell + body separation + off-site backup; non-interactive supported)
+    ├── decrypt_body.py   # Verify + decrypt → stdout (password via stdin)
+    ├── batch_encrypt.py  # Batch encrypt (non-interactive all/index mode + interactive menu)
     └── public_key.pem    # Public key for verification
 ```
 
