@@ -11,8 +11,11 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 
 def clean_serial(raw):
-    """清洗序列号，只保留可打印ASCII字符"""
-    return re.sub(r'[^\x20-\x7e]', '', raw.strip())
+    """清洗序列号：先删除不可打印字符，再 strip 空白（与 verify.py 保持一致）"""
+    if not raw:
+        return ''
+    cleaned = re.sub(r'[^\x20-\x7e]', '', raw)
+    return cleaned.strip()
 
 
 def find_private_key_on_usb(drive):

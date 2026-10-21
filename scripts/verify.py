@@ -11,7 +11,7 @@ if sys.stdout.encoding != 'utf-8':
 
 
 def clean_serial(raw):
-    """清洗序列号：去除不可打印字符，只保留字母数字和常见符号"""
+    """清洗序列号：先删除不可打印字符，再 strip 空白（与 sign_license.py 保持一致）"""
     if not raw:
         return ''
     cleaned = re.sub(r'[^\x20-\x7e]', '', raw)

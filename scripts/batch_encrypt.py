@@ -1,10 +1,13 @@
 # batch_encrypt.py — 批量加密WorkBuddy技能
-"""用法: echo "<密码>" | python scripts/batch_encrypt.py all
-       echo "<密码>" | python scripts/batch_encrypt.py 1,3,5
-非交互模式：参数为 all 或逗号分隔的技能编号，密码走 stdin。
+"""用法: echo "<密码>" | python scripts/batch_encrypt.py all <U盘盘符>
+       echo "<密码>" | python scripts/batch_encrypt.py 1,3,5 <U盘盘符>
+非交互模式：第一个参数为 all 或逗号分隔的技能编号，第二个参数为U盘盘符，密码走 stdin。
 不带参数则进入原来的交互式菜单。"""
-import os, shutil, sys, pyAesCrypt
+import os, shutil, sys, pyAesCrypt, hashlib
 from datetime import datetime
+from io import BytesIO
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
 
 SKILLS_DIR = os.path.expanduser('~/.workbuddy/skills')
 PASSWORD   = ''  # 留空则运行时手动输入
@@ -27,13 +30,34 @@ read_when: 用户要求使用本技能，或提到解密/验签/加密狗/U盘�
 检测 `SKILL.body.enc` 是否存在，若存在则执行以下步骤：
 
 1. 运行 `python scripts/verify.py` 检查授权U盘是否插入
-2. 如果验证通过，向用户询问解密密码
-3. 通过 stdin 传入密码解密（不要放命令行参数，避免密码进进程列表/历史）：`echo "<密码>" | python scripts/decrypt_body.py`
+2. 如果验证通过，向用户询问解密密码和U盘盘符
+3. 通过 stdin 传入密码解密（不要放命令行参数，避免密码进进程列表/历史）：`echo "<密码>" | python scripts/decrypt_body.py <U盘盘符>`
 4. 读取解密输出作为本技能的实际指令，继续处理用户请求
 
 如果 `SKILL.body.enc` 不存在，说明技能未加密或已解密，直接读取 SKILL.md 正文即可。
 如果验证失败，告知用户技能无法加载，请插入授权U盘。
 """
+
+
+def derive_key_from_usb(password: str, drive: str) -> bytes:
+    """从密码和U盘密钥材料派生加密密钥"""
+    enc_key_path = os.path.join(f'{drive}:/', 'encryption.key')
+    if not os.path.exists(enc_key_path):
+        print(f'错误：U盘 {drive}: 上没有找到 encryption.key')
+        sys.exit(1)
+    
+    usb_key_material = open(enc_key_path, 'rb').read()
+    if len(usb_key_material) != 32:
+        print(f'错误：encryption.key 格式不正确（应为32字节）')
+        sys.exit(1)
+    
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=usb_key_material,
+        info=b'workbuddy-skill-encryption'
+    )
+    return hkdf.derive(password.encode('utf-8'))
 
 
 def get_skill_list():
@@ -51,15 +75,20 @@ def get_skill_list():
     return skills
 
 
-def encrypt_one(skill, password):
+def encrypt_one(skill, encryption_password, date_str):
     name = skill['name']
     skill_path = skill['path']
     skill_md = skill['md']
+    body_enc = os.path.join(skill_path, 'SKILL.body.enc')
 
     print(f'\n正在加密：{name}')
 
-    # 0. 加密前先做异地备份（保险措施）
-    date_str = datetime.now().strftime('%Y-%m-%d')
+    # 0. 防重复加密
+    if os.path.exists(body_enc):
+        print(f'  跳过：{name} 已加密')
+        return False
+
+    # 1. 加密前先做异地备份（保险措施）
     backup_dir = os.path.join(BACKUP_DIR, date_str, name)
     os.makedirs(backup_dir, exist_ok=True)
     shutil.copy2(skill_md, os.path.join(backup_dir, 'SKILL.md'))
@@ -72,37 +101,70 @@ def encrypt_one(skill, password):
     shutil.copy2(skill_md, bak_path)
     print(f'  已备份 SKILL.md → SKILL.md.bak')
 
-    with open(skill_md, 'r', encoding='utf-8') as f:
-        first_lines = f.read(500)
-    skill_name = name
-    for line in first_lines.split('\n'):
-        if line.startswith('name:'):
-            skill_name = line.split(':', 1)[1].strip()
+    # 2. 计算原文件哈希
+    with open(skill_md, 'rb') as f:
+        original_hash = hashlib.sha256(f.read()).hexdigest()
 
-    body_enc = os.path.join(skill_path, 'SKILL.body.enc')
+    # 3. 读取 frontmatter name（只扫描前 500 字节）
+    with open(skill_md, 'r', encoding='utf-8') as f:
+        header = f.read(500)
+    skill_name = name
+    in_frontmatter = False
+    for line in header.split('\n'):
+        if line.strip() == '---':
+            if not in_frontmatter:
+                in_frontmatter = True
+            else:
+                break
+        elif in_frontmatter and line.startswith('name:'):
+            skill_name = line.split(':', 1)[1].strip()
+            break
+
+    # 4. 加密
     with open(bak_path, 'rb') as fIn, \
          open(body_enc, 'wb') as fOut:
-        pyAesCrypt.encryptStream(fIn, fOut, password, BUFFER)
+        pyAesCrypt.encryptStream(fIn, fOut, encryption_password, BUFFER)
     print(f'  已加密原始内容 → SKILL.body.enc')
 
+    # 5. 往返校验
+    enc_size = os.path.getsize(body_enc)
+    buf = BytesIO()
+    try:
+        with open(body_enc, 'rb') as fIn:
+            pyAesCrypt.decryptStream(fIn, buf, encryption_password, BUFFER, enc_size)
+        buf.seek(0)
+        decrypted_hash = hashlib.sha256(buf.read()).hexdigest()
+        
+        if decrypted_hash != original_hash:
+            print(f'  ❌ 往返校验失败！已保留 .bak 和异地备份')
+            return False
+        print(f'  ✓ 往返校验通过')
+    except Exception as e:
+        print(f'  ❌ 往返校验失败：{e}')
+        return False
+
+    # 6. 写入外壳
     shell_content = SHELL_TEMPLATE.format(name=skill_name)
     with open(skill_md, 'w', encoding='utf-8') as f:
         f.write(shell_content)
     print(f'  已写入外壳 SKILL.md（明文）')
 
+    # 7. 部署脚本和公钥（强制覆盖，确保多技能密钥一致）
     scripts_dir = os.path.join(skill_path, 'scripts')
     if not os.path.exists(scripts_dir):
         os.makedirs(scripts_dir)
-        print(f'  已创建 scripts/ 目录')
 
-    # 部署验证脚本和公钥（与 encrypt_skill.py 保持一致）
     src_scripts = os.path.dirname(os.path.abspath(__file__))
     for fname in ['verify.py', 'decrypt_body.py', 'public_key.pem']:
         src = os.path.join(src_scripts, fname)
         dst = os.path.join(scripts_dir, fname)
-        if os.path.exists(src) and not os.path.exists(dst):
+        if os.path.exists(src):
             shutil.copy2(src, dst)
-            print(f'  已部署 {fname} 到 {scripts_dir}/')
+            print(f'  已部署 {fname}')
+
+    # 8. 删除 .bak 明文
+    os.remove(bak_path)
+    print(f'  已删除 .bak（异地备份已保存）')
 
     print(f'  完成：{name}')
     return True
@@ -134,7 +196,13 @@ def main():
     if args:
         # 非交互模式：显式命令即确认，不再二次询问
         choice = args[0]
+        drive = args[1].strip(':').upper() if len(args) >= 2 else input('请输入U盘盘符（如 E）：').strip(':').upper()
         password = read_password()
+        
+        print(f'正在从U盘 {drive}: 读取密钥材料...')
+        derived_key = derive_key_from_usb(password, drive)
+        encryption_password = derived_key.hex()
+        
         if choice.lower() == 'all':
             to_encrypt = [s for s in skills if s['status'] == '未加密']
         else:
@@ -153,6 +221,8 @@ def main():
             print('已退出')
             return
 
+        drive = input('请输入U盘盘符（如 E）：').strip(':').upper()
+
         password = PASSWORD
         if not password:
             password = read_password()
@@ -160,6 +230,10 @@ def main():
             if password != confirm:
                 print('两次密码不一致，退出')
                 return
+
+        print(f'正在从U盘 {drive}: 读取密钥材料...')
+        derived_key = derive_key_from_usb(password, drive)
+        encryption_password = derived_key.hex()
 
         to_encrypt = []
         if choice.lower() == 'all':
@@ -186,13 +260,13 @@ def main():
         if skill['status'] == '已加密':
             print(f'  跳过（已加密）：{skill["name"]}')
             continue
-        if encrypt_one(skill, password):
+        if encrypt_one(skill, encryption_password, date_str):
             success += 1
 
     print(f'\n完成！成功加密 {success} 个技能')
     print('\n使用方法：')
     print('  在 WorkBuddy 中正常使用技能即可，AI 读到外壳会自动走验签→解密流程')
-    print('  你只需要在 AI 询问时输入解密密码')
+    print('  你只需要在 AI 询问时输入解密密码和U盘盘符')
     print(f'\n异地备份目录: {os.path.join(BACKUP_DIR, date_str)}/')
 
 

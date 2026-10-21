@@ -1,3 +1,4 @@
 pyAesCrypt>=6.1.0
 cryptography>=42.0.0
 pywin32>=306
+wmi>=1.5.1
