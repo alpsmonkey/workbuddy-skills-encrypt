@@ -32,45 +32,59 @@ description: USB加密狗互通式加密系统——保护WorkBuddy技能不被�
    - 序列号为空的 U 盘不可用，需要换盘
    - 记住盘符（如 E:），后面所有步骤都要用
 
-2. **生成密钥对** → `python scripts/gen_keys.py E`
-   - 生成 RSA-2048 密钥对
-   - **私钥直接写入U盘根目录**（private_key.pem），不留在本地
+2. **生成密钥对和加密密钥材料** → `python scripts/gen_keys.py E`
+   - 生成 RSA-2048 密钥对（用于验签）
+   - 生成 32 字节随机密钥材料 encryption.key（用于加密）
+   - **私钥和密钥材料直接写入U盘根目录**（private_key.pem + encryption.key），不留在本地
    - 公钥留在 scripts/ 目录（public_key.pem），用于验签
 
 3. **签名 license.dat** → `python scripts/sign_license.py E`
    - 从U盘读取 private_key.pem 签名
    - 将 license.dat 写入U盘根目录
-   - 现在U盘上同时有 private_key.pem + license.dat
+   - 现在U盘上有 private_key.pem + encryption.key + license.dat
 
 4. **部署公钥** → 将 public_key.pem 拷贝到目标技能目录的 scripts/
 
 ### 加密技能
 
-5. **加密** → `python scripts/encrypt_skill.py <SKILL.md路径>`（单个，密码走 stdin 或交互）或 `python scripts/batch_encrypt.py all`（批量，密码走 stdin）
-   - 备份原始 SKILL.md → SKILL.md.bak
+5. **加密** → `echo "<密码>" | python scripts/encrypt_skill.py <SKILL.md路径> <U盘盘符>`（单个）或 `echo "<密码>" | python scripts/batch_encrypt.py all <U盘盘符>`（批量）
+   - 从 U 盘读取 encryption.key，用 HKDF(密码, encryption.key) 派生加密密钥
+   - 备份原始 SKILL.md 到异地备份目录
    - 加密正文 → SKILL.body.enc（AES-256）
-   - 写入外壳 SKILL.md（明文 bootloader，告诉 AI 解密协议；description 只留中性触发词，不泄露技能主题）
-   - 自动创建 scripts/ 目录
+   - 往返校验：立即解密比对 SHA256，确保加密成功
+   - 删除本地明文备份（只保留异地备份）
+   - 写入外壳 SKILL.md（明文 bootloader，告诉 AI 解密协议）
+   - 自动部署验签和解密脚本到 scripts/
 
 ### 使用加密后的技能
 
 AI 加载技能时自动执行：
 1. 读取外壳 SKILL.md → 识别加密协议
 2. 运行 `python scripts/verify.py` → 检查 U 盘 + RSA 验签
-3. 验签通过 → 询问密码 → 通过 stdin 传入密码解密（不要放命令行参数）：`echo "<密码>" | python scripts/decrypt_body.py` → 获取正文
+3. 验签通过 → 询问密码和U盘盘符 → 通过 stdin 传入密码解密：`echo "<密码>" | python scripts/decrypt_body.py <U盘盘符>` → 获取正文
 4. 按正文指令执行任务
 
-### 给新 U 盘签名（多 U 盘冗余）
+### 管理加密技能
 
-插入持有 private_key.pem 的主U盘，运行 `python scripts/sign_multi.py`
-- 主U盘上的私钥会签名每个U盘的序列号
+**解封（恢复原始 SKILL.md）** → `python scripts/unseal_skill.py <技能目录>`
+- 优先使用本地 .bak 或异地备份恢复
+- 如果备份不存在，可通过密码+U盘解密恢复
+- 解封后删除 SKILL.body.enc
+
+**改密（用新密码重新加密）** → `echo "<旧密码>\n<新密码>" | python scripts/change_password.py <技能目录> <U盘盘符>`
+- 用旧密码解密到内存
+- 用新密码重新加密
+- 往返校验确保新密码可用
+
+**给新 U 盘签名（多 U 盘冗余）** → `python scripts/sign_multi.py <主U盘盘符> <备用U盘盘符1> [<备用U盘盘符2> ...]`
+- 自动读取每个U盘的序列号并签名
 - 主U盘 = 签发权杖（有 private_key.pem）+ 授权凭证（有 license.dat）
 - 备用U盘 = 仅授权凭证（只有 license.dat，不能签新 license）
 
 ### 临时解密查看
 
 ```bash
-echo "<密码>" | python scripts/decrypt_body.py > temp.md
+echo "<密码>" | python scripts/decrypt_body.py <U盘盘符> > temp.md
 ```
 
 解密输出到文件查看，看完删除。
@@ -89,20 +103,24 @@ workbuddy-skills-encrypt/              # 本技能（本地 skill 目录）
 ├── SKILL.md                           # 本文件
 └── scripts/
     ├── read_serial.py                 # 读取U盘序列号（含异常字符清洗）
-    ├── gen_keys.py                    # 生成RSA-2048密钥对（私钥→U盘，公钥→本地）
+    ├── gen_keys.py                    # 生成RSA-2048密钥对+加密密钥材料（写入U盘）
     ├── sign_license.py                # 签名license.dat到U盘（从U盘读私钥）
-    ├── sign_multi.py                  # 多U盘冗余签名（从主U盘读私钥）
+    ├── sign_multi.py                  # 多U盘冗余签名（自动读序列号）
     ├── public_key.pem                 # 公钥（验签用，留在本地）
     ├── verify.py                      # U盘验签（WMI关联查询版）
-    ├── encrypt_skill.py               # 加密单个技能（外壳+正文分离）
+    ├── encrypt_skill.py               # 加密单个技能（HKDF派生+往返校验）
     ├── decrypt_body.py                # 验签+解密正文到stdout
-    └── batch_encrypt.py               # 批量加密
+    ├── batch_encrypt.py               # 批量加密
+    ├── unseal_skill.py                # 解封技能（恢复原始SKILL.md）
+    └── change_password.py             # 改密（用新密码重新加密）
 
 U盘根目录（物理加密狗）：                # 主U盘
 ├── private_key.pem                    # 私钥（签发权杖，仅主U盘持有）
+├── encryption.key                     # 32字节随机密钥材料（加密用）
 └── license.dat                        # RSA签名（授权凭证）
 
 备用U盘根目录：                         # 备用U盘
+├── encryption.key                     # 与主U盘相同的密钥材料（需手动复制）
 └── license.dat                        # 仅授权凭证，无签发权
 
 异地备份目录（保险措施）：                # 加密前自动复制明文原件
@@ -115,17 +133,23 @@ U盘根目录（物理加密狗）：                # 主U盘
 | 角色 | 存储位置 | 作用 |
 |---|---|---|
 | private_key.pem | **主U盘根目录** | 签发新 license 的唯一凭证，拔掉U盘谁也签不了 |
+| encryption.key | **U盘根目录** | 32字节随机密钥材料，与密码一起派生加密密钥（HKDF） |
 | public_key.pem | scripts/ 本地 | 验签用，公开无所谓 |
 | license.dat | 每个U盘根目录 | RSA 签名，证明"这个U盘被授权了" |
-| SKILL.body.enc | 被加密技能目录 | AES-256 加密的技能正文，没密码解不开 |
+| SKILL.body.enc | 被加密技能目录 | AES-256 加密的技能正文，加密密钥 = HKDF(密码, encryption.key) |
 
-**私钥在U盘上的意义**：U盘不再只是"授权凭证"，而是"签发权杖"——要给新U盘签 license，必须插入持有私钥的主U盘。整个加密体系的安全性完全绑定在物理U盘上。
+**v3 架构改进**：
+- U盘不再只是验签流程检查，而是真正参与加密本身
+- 加密密钥 = HKDF(密码, U盘密钥材料)，没有 U 盘物理上无法解密
+- 即使知道密码，没有正确的 U 盘也解不开
+- 整个加密体系的安全性完全绑定在物理U盘上
 
 ## 注意事项
 
-- **私钥只存在于主U盘上**，本地不留副本。拔了U盘 = 丢失签发权，建议额外备份到密码管理器或加密压缩包
-- **解密密码设置独立强密码，勿用U盘序列号**——序列号用 `read_serial.py` 就能读到，等于把密码贴在锁上。本方案的真实强度在 U 盘 RSA 验签（硬件在不在），密码层防的是误用，不防蓄意攻击者
+- **私钥和密钥材料只存在于U盘上**，本地不留副本。拔了U盘 = 丢失签发权和解密能力，建议额外备份到密码管理器或加密压缩包
+- **解密密码设置独立强密码**——v3 架构下，密码和 U 盘缺一不可，双因素保护
 - **密码不进命令行**：所有脚本通过 stdin 或交互获取密码，禁止放在命令行参数里（会进进程列表、shell 历史和 AI 上下文日志）
-- **SKILL.md.bak 是原件**，加密后务必确认备份完整
+- **备用U盘需要手动复制 encryption.key**：`sign_multi.py` 只签发 license.dat，encryption.key 需要手动从主U盘复制到备用U盘
 - **多 U 盘冗余**：用 sign_multi.py 给多个 U 盘分别签 license.dat，丢一个不影响
 - **互通式加密**：本技能也可以加密自己（运行 encrypt_skill.py 指向本技能的 SKILL.md），加密后会生成外壳，功能不变
+- **v3 破坏性变更**：旧版（v2 及之前）加密的技能无法用 v3 解密，需要先用旧版解封再用新版重新加密
